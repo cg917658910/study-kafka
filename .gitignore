@@ -1,0 +1,5 @@
+/kafka-data
+*/tmp*
+/tmp
+*.exe
+*.lo

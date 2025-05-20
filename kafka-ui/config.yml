@@ -1,0 +1,4 @@
+kafka:
+  clusters:
+    - name: kraft-cluster
+      bootstrapServers: "kafka:19092"

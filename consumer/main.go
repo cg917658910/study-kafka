@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -13,9 +18,9 @@ import (
 )
 
 const (
-	consumerGroup = "payment-group"
-	topic         = "cg-topic"
-	brokers       = "localhost:9092"
+	consumerGroup = "wallet.group.test3.order.created.notify"
+	topic         = "wallet.topic.test3.order.created"
+	brokers       = "182.16.4.66:9092"
 )
 
 func main() {
@@ -42,7 +47,7 @@ func main() {
 	handler := ConsumerGroupHandler{}
 
 	wg := &sync.WaitGroup{}
-	consumerNum := 1
+	consumerNum := 100
 	for i := 0; i < consumerNum; i++ { // 消费者数目
 		wg.Add(1)
 		go func(id int) {
@@ -67,10 +72,66 @@ type ConsumerGroupHandler struct{}
 func (h ConsumerGroupHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (h ConsumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
+type WalletResponse struct {
+	Data struct {
+		URL    string `json:"url"`
+		Key    string `json:"key"`
+		Params struct {
+			OrderId string `json:"order_id"`
+		} `json:"params"`
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
 func (h ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
-		fmt.Printf("📩 分区 %d | 线程 %d 收到: %s\n", msg.Partition, os.Getpid(), string(msg.Value))
+		/* walletResp := &WalletResponse{}
+		json.Unmarshal(msg.Value, walletResp)
+		fmt.Println("resp: ", walletResp)
+		fmt.Printf("📩 收到: id=%s key=%s\n", walletResp.Data.ID, walletResp.Data.Key)
+		if err := requestNotify(walletResp); err != nil {
+			fmt.Printf("📩 Request notify service failed: id=%s err: %s\n", walletResp.Data.ID, err.Error())
+			continue
+		} */
+		fmt.Printf("📩 Notify success: id=%s\n", msg.Value)
+
 		session.MarkMessage(msg, "") // 标记已消费
 	}
 	return nil
+}
+
+type NotifyRequest struct {
+	OrderId string `json:"order_id"`
+	ID      string `json:"id"`
+}
+
+func requestNotify(walletMsg *WalletResponse) error {
+	params := &NotifyRequest{
+		OrderId: walletMsg.Data.Params.OrderId,
+		ID:      walletMsg.Data.ID,
+	}
+	url := walletMsg.Data.URL
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New(resp.Status)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Println("Notify service response Body:", string(body))
+	return nil
+}
+func notifyHandler() {
+
 }

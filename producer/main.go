@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	topic   = "cg-topic"
-	brokers = "localhost:9092"
+	topic   = "wallet.topic.test.order.created"
+	brokers = "182.16.4.66:9092"
 )
 
 func main() {
@@ -22,11 +22,14 @@ func main() {
 	defer producer.Close()
 	wg := &sync.WaitGroup{}
 	// 并发生产 5 个线程，每个线程不断发送消息
-	for i := 0; i < 3; i++ {
+	st := time.Now()
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go produceMessages(producer, i, wg)
 	}
 	wg.Wait()
+	et := time.Since(st)
+	fmt.Println("use time=", et)
 	//select {} // 阻塞主线程
 }
 
@@ -40,7 +43,7 @@ func newProducer() (sarama.SyncProducer, error) {
 
 func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 	defer wg.Done()
-	count := 5
+	count := 10
 	for {
 		if count == 0 {
 			break
@@ -62,6 +65,6 @@ func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 		}
 
 		log.Printf("✅ 生产者 %d 发送消息: %s (Partition=%d, Offset=%d)", id, value, partition, offset)
-		time.Sleep(time.Millisecond * 500) // 控制发送速率
+		//time.Sleep(time.Millisecond * 500) // 控制发送速率
 	}
 }
