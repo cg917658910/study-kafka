@@ -13,27 +13,44 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/cg917658910/study-kafka/consumer/tracker"
 )
 
 const (
-	consumerGroup = "wallet.group.test3.order.created.notify"
-	topic         = "wallet.topic.test3.order.created"
-	brokers       = "182.16.4.66:9092"
+	consumerGroup = "wallet.group.test2.order.notify"
+	topic         = "wallet.topic.test.order.notify"
+	brokers       = "localhost:9092"
 )
 
 func main() {
 	config := sarama.NewConfig()
 	config.Version = sarama.V3_2_3_0
-	config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin // 轮询分区
-	config.Consumer.Offsets.Initial = sarama.OffsetNewest
+
+	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin() // 轮询分区
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
+	config.Consumer.Offsets.AutoCommit.Enable = false //关闭自动提交
+	config.Consumer.Return.Errors = true
+	/* config.Consumer.Group.Session.Timeout = 10 * 60 * 1000   // 10分钟
+	config.Consumer.Group.Heartbeat.Interval = 3 * 60 * 1000 // 3分钟
+	config.Consumer.Group.Rebalance.Timeout = 10 * 60 * 1000 // 10分钟
+	config.Consumer.Group.Rebalance.Retry.Max = 10
+	config.Consumer.Group.Rebalance.Retry.Backoff = 10 * 1000 // 10秒 */
 
 	group, err := sarama.NewConsumerGroup([]string{brokers}, consumerGroup, config)
 	if err != nil {
 		log.Fatalf("❌ 创建消费者组失败: %v", err)
 	}
 	defer group.Close()
+
+	// 监听 Kafka 消费者组错误
+	go func() {
+		for err := range group.Errors() {
+			log.Printf("⚠️ 消费者组错误: %v\n", err)
+		}
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sigchan := make(chan os.Signal, 1)
@@ -44,11 +61,13 @@ func main() {
 		cancel()
 	}()
 
-	handler := ConsumerGroupHandler{}
+	handler := ConsumerGroupHandler{
+		KafkaSafeConsumer: tracker.NewKafkaSafeConsumer(),
+	}
 
 	wg := &sync.WaitGroup{}
 	consumerNum := 100
-	for i := 0; i < consumerNum; i++ { // 消费者数目
+	for i := range consumerNum { // 消费者数目
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -67,10 +86,24 @@ func main() {
 }
 
 // 消费者逻辑
-type ConsumerGroupHandler struct{}
+type ConsumerGroupHandler struct {
+	*tracker.KafkaSafeConsumer
+}
 
-func (h ConsumerGroupHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
-func (h ConsumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
+func (h ConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
+	go func() {
+		for {
+			time.AfterFunc(time.Second*1, func() {
+				h.SafeCommit(sess)
+			})
+		}
+	}()
+	return nil
+}
+func (h ConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession) error {
+	//sess.Commit()
+	return nil
+}
 
 type WalletResponse struct {
 	Data struct {
@@ -83,19 +116,33 @@ type WalletResponse struct {
 	} `json:"data"`
 }
 
+type OrderNotifyMessage struct {
+	Data struct {
+		//Info      map[string]any `json:"info"`
+		NotifyUrl string `json:"notify_url"`
+		OrderType string `json:"order_type"`
+		DataId    string `json:"data_id"`
+	} `json:"data"`
+}
+
 func (h ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	msgTracker := h.GetTracker(tracker.TopicName(claim.Topic()), tracker.PartitionID(claim.Partition()))
+	msgTracker.SetInitOffset(claim.InitialOffset())
+	fmt.Printf("tracker set init offset topic=%s partition=%d initoffset=%d \n", claim.Topic(), claim.Partition(), claim.InitialOffset())
+
 	for msg := range claim.Messages() {
-		/* walletResp := &WalletResponse{}
-		json.Unmarshal(msg.Value, walletResp)
-		fmt.Println("resp: ", walletResp)
-		fmt.Printf("📩 收到: id=%s key=%s\n", walletResp.Data.ID, walletResp.Data.Key)
-		if err := requestNotify(walletResp); err != nil {
+		msgTracker.Start(msg.Offset)
+		data := &OrderNotifyMessage{}
+		json.Unmarshal(msg.Value, data)
+		fmt.Println("resp: ", data)
+		fmt.Printf("📩 收到: id=%s key=%s\n", data.Data.DataId, data.Data.OrderType)
+		/* if err := requestNotify(data); err != nil {
 			fmt.Printf("📩 Request notify service failed: id=%s err: %s\n", walletResp.Data.ID, err.Error())
 			continue
 		} */
 		fmt.Printf("📩 Notify success: id=%s\n", msg.Value)
-
-		session.MarkMessage(msg, "") // 标记已消费
+		msgTracker.Done(msg.Offset)
+		//session.MarkMessage(msg, "") // 标记已消费
 	}
 	return nil
 }

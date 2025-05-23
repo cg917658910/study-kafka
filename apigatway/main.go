@@ -33,9 +33,9 @@ func notifyHandler(c echo.Context) error {
 		NewOrderId: newOrderId,
 	}
 	// 请求通知回调
-	if err := notifyResult(data); err != nil {
+	/* if err := notifyResult(data); err != nil {
 		return fmt.Errorf("Notify Result callback error: %s", err.Error())
-	}
+	} */
 	return c.JSON(http.StatusOK, echo.Map{
 		"code": 0,
 		"data": data,
