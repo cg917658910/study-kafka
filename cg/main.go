@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,20 +45,27 @@ func (n *nofitySvc) consume(handler consumerHandler) error {
 	return nil
 }
 
+type myConsumer struct {
+	needMarkNum uint64
+}
+
+func NewMy() *myConsumer {
+	return &myConsumer{}
+}
+
 func main() {
 
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
-	timer := time.AfterFunc(time.Second*5, func() {
-		fmt.Println("time.After func do")
-	})
-	fmt.Println("time.after next")
-
-	select {
-	case <-ctx.Done():
-		timer.Stop()
-	case <-time.After(time.Second * 6):
-		timer.Stop()
+	c := NewMy()
+	atomic.AddUint64(&c.needMarkNum, 10)
+	atomic.AddUint64(&c.needMarkNum, 10)
+	//c.incMarkNum()
+	num := atomic.LoadUint64(&c.needMarkNum)
+	fmt.Println("num=", num)
+	if num != 1 {
+		fmt.Println("num=", num)
 	}
+	fmt.Println("num=", num)
+
 	return
 	notifySvc := newNotifySvc()
 	handler := &MyHandler{}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/google/uuid"
 )
 
 const (
@@ -51,13 +52,15 @@ type OrderNotifyMessage struct {
 		OrderType string         `json:"order_type"`
 		DataId    string         `json:"data_id"`
 	} `json:"data"`
+	MsgId    string `json:"msg_id"`
 	Platform string `json:"platform"`
 }
 
 func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 	defer wg.Done()
-	count := 1
+	count := 300
 	urls := []string{
+		/* "http://localhost:8080/notify",
 		"http://localhost:8080/notify",
 		"http://localhost:8080/notify",
 		"http://localhost:8080/notify",
@@ -69,16 +72,15 @@ func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 		"http://localhost:8080/notify",
 		"http://localhost:8080/notify",
 		"http://localhost:8080/notify",
+		"http://localhost:8080/notify", */
+		/* "http://localhost:8080/notify",
 		"http://localhost:8080/notify",
-		"http://localhost:8080/notify",
-		"http://localhost:8080/notify",
-		"http://localhost:8080/notify",
-		"http://localhost:8080/notify",
-		"http://localhost:8081/notify",           // 500
-		"http://localhost:8081/notify",           // 500
-		"http://localhost:8080/notify_not_found", // notfound */
-		"http://localhost:8080/notify_not_found", //notfound
-		"http://localhost:8080/notify",           //notfound
+		"http://localhost:8080/notify", */
+		//"http://localhost:8081/notify", // 500
+		//"http://localhost:8081/notify",           // 500
+		//"http://localhost:8080/notify_not_found", // notfound */
+		//"http://localhost:8080/notify_not_found", //notfound
+		"http://localhost:8080/notify", //notfound
 		//"",
 	}
 	fmt.Println("Send message ...")
@@ -110,6 +112,7 @@ func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 		data.Data.DataId = dataId
 		data.Data.OrderType = "test"
 		data.Data.NotifyUrl = url
+		data.MsgId = fmt.Sprintf("%s_%s", data.Platform, uuid.NewString())
 		dataByte, err := json.Marshal(data)
 		if err != nil {
 			log.Fatalf("❌ JSON 序列化失败: %v", err)

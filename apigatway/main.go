@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -36,6 +38,7 @@ func notifyHandler(c echo.Context) error {
 	/* if err := notifyResult(data); err != nil {
 		return fmt.Errorf("Notify Result callback error: %s", err.Error())
 	} */
+	time.Sleep(time.Duration(rand.Intn(200)))
 	return c.JSON(http.StatusOK, echo.Map{
 		"code": 0,
 		"data": data,

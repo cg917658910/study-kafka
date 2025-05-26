@@ -60,7 +60,19 @@ func main() {
 		fmt.Println("⚠️  退出中...")
 		cancel()
 	}()
+	go func() {
+		time.AfterFunc(time.Second*10, func() {
+			fmt.Println("group pause all!")
+			group.PauseAll()
+		})
+	}()
 
+	go func() {
+		time.AfterFunc(time.Second*20, func() {
+			fmt.Println("group resume all!")
+			group.ResumeAll()
+		})
+	}()
 	handler := ConsumerGroupHandler{
 		KafkaSafeConsumer: tracker.NewKafkaSafeConsumer(),
 	}
@@ -93,9 +105,8 @@ type ConsumerGroupHandler struct {
 func (h ConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
 	go func() {
 		for {
-			time.AfterFunc(time.Second*1, func() {
-				h.SafeCommit(sess)
-			})
+			<-time.After(5 * time.Second)
+			sess.Commit()
 		}
 	}()
 	return nil
@@ -126,12 +137,9 @@ type OrderNotifyMessage struct {
 }
 
 func (h ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	msgTracker := h.GetTracker(tracker.TopicName(claim.Topic()), tracker.PartitionID(claim.Partition()))
-	msgTracker.SetInitOffset(claim.InitialOffset())
-	fmt.Printf("tracker set init offset topic=%s partition=%d initoffset=%d \n", claim.Topic(), claim.Partition(), claim.InitialOffset())
 
 	for msg := range claim.Messages() {
-		msgTracker.Start(msg.Offset)
+		//msgTracker.Start(msg.Offset)
 		data := &OrderNotifyMessage{}
 		json.Unmarshal(msg.Value, data)
 		fmt.Println("resp: ", data)
@@ -141,8 +149,8 @@ func (h ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, 
 			continue
 		} */
 		fmt.Printf("📩 Notify success: id=%s\n", msg.Value)
-		msgTracker.Done(msg.Offset)
-		//session.MarkMessage(msg, "") // 标记已消费
+		//msgTracker.Done(msg.Offset)
+		session.MarkMessage(msg, "") // 标记已消费
 	}
 	return nil
 }
