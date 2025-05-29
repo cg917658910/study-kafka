@@ -58,7 +58,7 @@ type OrderNotifyMessage struct {
 
 func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 	defer wg.Done()
-	count := 300
+	count := 100
 	urls := []string{
 		/* "http://localhost:8080/notify",
 		"http://localhost:8080/notify",
@@ -115,7 +115,7 @@ func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 		data.MsgId = fmt.Sprintf("%s_%s", data.Platform, uuid.NewString())
 		dataByte, err := json.Marshal(data)
 		if err != nil {
-			log.Fatalf("❌ JSON 序列化失败: %v", err)
+			fmt.Printf("❌ JSON 序列化失败: %v\n", err)
 		}
 		msg := &sarama.ProducerMessage{
 			Topic: topic,
@@ -123,13 +123,13 @@ func produceMessages(producer sarama.SyncProducer, id int, wg *sync.WaitGroup) {
 			Value: sarama.ByteEncoder(dataByte),
 		}
 
-		_, _, err = producer.SendMessage(msg)
+		partition, offset, err := producer.SendMessage(msg)
 		if err != nil {
 			log.Printf("❌ 生产者 %d 发送消息失败: %v", id, err)
 			continue
 		}
 
-		//log.Printf("✅ 生产者 %d 发送消息: %s (Partition=%d, Offset=%d)", id, value, partition, offset)
+		fmt.Printf("✅ 生产者 %d 发送消息: (Partition=%d, Offset=%d)\n", id, partition, offset)
 		//time.Sleep(time.Millisecond * 500) // 控制发送速率
 	}
 }
